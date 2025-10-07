@@ -1,6 +1,6 @@
 import { validationResult } from "express-validator";
 import bcrypt from "bcryptjs";
-import User from "../models/user.js";
+import User from "../models/User.js";
 import { OAuth2Client } from "google-auth-library";
 import { signToken } from "../utils/token.js";
 
