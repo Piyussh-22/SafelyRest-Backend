@@ -1,5 +1,5 @@
 // controllers/admin.controller.js
-import User from "../models/User.js";
+import User from "../models/user.js";
 import { House } from "../models/house.js";
 
 export const getAdminStats = async (req, res) => {
