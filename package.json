@@ -1,27 +1,21 @@
 {
   "name": "safely-rest-backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "src/app.js",
   "type": "module",
   "scripts": {
-    "start": "nodemon app.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node app.js",
+    "dev": "nodemon app.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Piyussh-22/safely-rest-backend.git"
+    "url": "git+https://github.com/Piyussh-22/SafelyRest-Backend.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "bugs": {
-    "url": "https://github.com/Piyussh-22/safely-rest-backend/issues"
+    "url": "https://github.com/Piyussh-22/SafelyRest-Backend/issues"
   },
-  "homepage": "https://github.com/Piyussh-22/safely-rest-backend#readme",
-  "description": "",
-  "devDependencies": {
-    "nodemon": "^3.1.10"
-  },
+  "homepage": "https://github.com/Piyussh-22/SafelyRest-Backend#readme",
+  "license": "ISC",
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "cloudinary": "^1.41.3",
@@ -35,5 +29,8 @@
     "mongoose": "^8.16.4",
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^4.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
   }
 }
