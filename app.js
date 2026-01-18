@@ -22,7 +22,7 @@ app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:5173",
     credentials: true,
-  })
+  }),
 );
 
 console.log("🟢 App middlewares configured (JWT only)");
@@ -30,6 +30,11 @@ console.log("🟢 App middlewares configured (JWT only)");
 // Public routes (no auth required)
 app.use("/api/auth", authRoutes);
 app.use("/api/store", storeRoutes);
+
+// uptime robot bot
+app.get("/uptime", (req, res) => {
+  res.status(200).send("uptime robot working");
+});
 
 // Protected routes
 app.use("/api/host", protect, restrictTo("host"), hostRoutes);
