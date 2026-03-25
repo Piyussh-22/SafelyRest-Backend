@@ -1,34 +1,44 @@
-// controllers/admin.controller.js
-import User from "../models/user.js";
-import { House } from "../models/house.js";
+import {
+  fetchAdminStats,
+  fetchAllBookings,
+  removeHouseByAdmin,
+} from "../services/admin.service.js";
+import { AppError } from "../utils/AppError.js";
+import { MSG } from "../constants/messages.js";
+import { HTTP_STATUS } from "../constants/httpStatus.js";
 
-export const getAdminStats = async (req, res) => {
+export const getAdminStats = async (req, res, next) => {
   try {
-    const totalMembers = await User.countDocuments();
-    const totalHosts = await User.countDocuments({ userType: "host" });
-    const totalGuests = await User.countDocuments({ userType: "guest" });
-    const totalHouses = await House.countDocuments();
+    const stats = await fetchAdminStats();
+    return res.status(HTTP_STATUS.OK).json({ success: true, data: stats });
+  } catch (err) {
+    next(new AppError(MSG.FETCH_STATS_FAIL, HTTP_STATUS.INTERNAL_SERVER_ERROR));
+  }
+};
 
-    const recentUsers = await User.find({})
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .select("firstName userType createdAt");
+export const getAllBookings = async (req, res, next) => {
+  try {
+    const { status, page, limit } = req.query;
+    const result = await fetchAllBookings({ status, page, limit });
+    return res.status(HTTP_STATUS.OK).json({ success: true, ...result });
+  } catch (err) {
+    next(
+      new AppError(
+        MSG.FETCH_ALL_BOOKINGS_FAIL,
+        HTTP_STATUS.INTERNAL_SERVER_ERROR,
+      ),
+    );
+  }
+};
 
-    return res.json({
+export const deleteHouseByAdmin = async (req, res, next) => {
+  try {
+    await removeHouseByAdmin(req.params.houseId);
+    return res.status(HTTP_STATUS.OK).json({
       success: true,
-      data: {
-        totalMembers,
-        totalHosts,
-        totalGuests,
-        totalHouses,
-        recentUsers,
-      },
+      message: MSG.HOUSE_DELETED_ADMIN,
     });
   } catch (err) {
-    console.error("Error fetching admin stats:", err.message);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch admin stats",
-    });
+    next(err);
   }
 };

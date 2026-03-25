@@ -1,11 +1,14 @@
-// Routes are protected at app.js
-// src/routes/admin.routes.js
 import express from "express";
-import { getAdminStats } from "../controllers/admin.controller.js";
+import {
+  getAdminStats,
+  getAllBookings,
+  deleteHouseByAdmin,
+} from "../controllers/admin.controller.js";
 
 const router = express.Router();
 
-// Admin dashboard stats
 router.get("/stats", getAdminStats);
+router.get("/bookings", getAllBookings);
+router.delete("/houses/:houseId", deleteHouseByAdmin);
 
 export default router;

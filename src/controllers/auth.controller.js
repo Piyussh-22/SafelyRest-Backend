@@ -1,31 +1,35 @@
 import { validationResult } from "express-validator";
 import bcrypt from "bcryptjs";
-import User from "../models/user.js";
 import { OAuth2Client } from "google-auth-library";
+import User from "../models/user.js";
 import { signToken } from "../utils/token.js";
+import { AppError } from "../utils/AppError.js";
+import { MSG } from "../constants/messages.js";
+import { HTTP_STATUS } from "../constants/httpStatus.js";
 
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// POST: Signup a new user
-export const postSignup = async (req, res) => {
-  const { firstName, email, password, userType } = req.body;
+const formatUser = (user) => ({
+  id: user._id,
+  name: user.firstName,
+  email: user.email,
+  role: user.userType,
+});
 
+// POST /auth/signup
+export const postSignup = async (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(422).json({
-      success: false,
-      message: errors.array()[0].msg,
-    });
+    return next(new AppError(errors.array()[0].msg, HTTP_STATUS.UNPROCESSABLE));
   }
 
   try {
+    const { firstName, email, password, userType } = req.body;
     const emailNormalized = email.toLowerCase();
-    const existingUser = await User.findOne({ email: emailNormalized });
-    if (existingUser) {
-      return res.status(422).json({
-        success: false,
-        message: "Email is already registered",
-      });
+
+    const existing = await User.findOne({ email: emailNormalized });
+    if (existing) {
+      return next(new AppError(MSG.EMAIL_TAKEN, HTTP_STATUS.CONFLICT));
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -39,122 +43,96 @@ export const postSignup = async (req, res) => {
 
     const token = signToken(newUser);
 
-    return res.status(201).json({
+    return res.status(HTTP_STATUS.CREATED).json({
       success: true,
-      message: "Signup successful",
+      message: MSG.SIGNUP_SUCCESS,
       token,
-      user: {
-        id: newUser._id,
-        name: newUser.firstName,
-        role: newUser.userType,
-      },
+      user: formatUser(newUser),
     });
   } catch (err) {
-    console.error("POST /auth/signup error:", err.message);
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-    });
+    next(err);
   }
 };
 
-// POST: Login user (normal + hardcoded admin)
-export const postLogin = async (req, res) => {
-  const { email, password } = req.body;
-
+// POST /auth/login
+export const postLogin = async (req, res, next) => {
   try {
+    const { email, password } = req.body;
     const emailNormalized = email.toLowerCase();
 
-    // Hardcoded single admin login
-    if (
-      emailNormalized === process.env.ADMIN_EMAIL &&
-      password === process.env.ADMIN_PASSWORD
-    ) {
-      const adminUser = {
-        _id: "admin-id",
-        firstName: "Admin",
-        email: emailNormalized,
-        userType: "admin",
-      };
-
-      const token = signToken(adminUser, { expiresIn: "7d" });
-      return res.json({
-        success: true,
-        message: "Admin login successful",
-        token,
-        user: {
-          id: adminUser._id,
-          name: adminUser.firstName,
-          role: adminUser.userType,
-        },
-      });
-    }
-
-    // Normal user login
     const user = await User.findOne({ email: emailNormalized }).select(
-      "+password"
+      "+password",
     );
-    if (!user) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Invalid email or password" });
+
+    if (!user || !user.password) {
+      return next(
+        new AppError(MSG.INVALID_CREDENTIALS, HTTP_STATUS.UNAUTHORIZED),
+      );
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Invalid email or password" });
+      return next(
+        new AppError(MSG.INVALID_CREDENTIALS, HTTP_STATUS.UNAUTHORIZED),
+      );
     }
 
-    const token = signToken(user, { expiresIn: "7d" });
+    const token = signToken(user);
 
-    return res.json({
+    return res.status(HTTP_STATUS.OK).json({
       success: true,
-      message: "Login successful",
+      message: MSG.LOGIN_SUCCESS,
       token,
-      user: {
-        id: user._id,
-        name: user.firstName,
-        role: user.userType,
-      },
+      user: formatUser(user),
     });
   } catch (err) {
-    console.error("POST /auth/login error:", err.message);
-    return res
-      .status(500)
-      .json({ success: false, message: "Internal Server Error" });
+    next(err);
   }
 };
 
-// POST: Logout (JWT handled on client side)
-export const postLogout = (req, res) => {
-  return res.json({ success: true, message: "Logged out successfully" });
+// POST /auth/logout
+export const postLogout = (_req, res) => {
+  return res.status(HTTP_STATUS.OK).json({
+    success: true,
+    message: MSG.LOGOUT_SUCCESS,
+  });
 };
 
-// POST: Google login
-export const postGoogleLogin = async (req, res) => {
+// POST /auth/google-login
+export const postGoogleLogin = async (req, res, next) => {
   try {
     const { idToken, userType } = req.body;
-    if (!idToken) return res.status(400).json({ message: "idToken missing" });
 
-    const ticket = await client.verifyIdToken({
+    if (!idToken) {
+      return next(
+        new AppError(MSG.GOOGLE_TOKEN_MISSING, HTTP_STATUS.BAD_REQUEST),
+      );
+    }
+
+    const ticket = await googleClient.verifyIdToken({
       idToken,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
-    if (!payload)
-      return res.status(400).json({ message: "Invalid Google token" });
-    if (!payload.email_verified)
-      return res.status(400).json({ message: "Google email not verified" });
+    if (!payload) {
+      return next(
+        new AppError(MSG.GOOGLE_TOKEN_INVALID, HTTP_STATUS.BAD_REQUEST),
+      );
+    }
+    if (!payload.email_verified) {
+      return next(
+        new AppError(MSG.GOOGLE_EMAIL_UNVERIFIED, HTTP_STATUS.BAD_REQUEST),
+      );
+    }
 
     const googleId = payload.sub;
-    const email = payload.email.toLowerCase(); // normalize email
+    const email = payload.email.toLowerCase();
     const firstName =
       payload.given_name || (payload.name || "").split(" ")[0] || "";
 
     let user = await User.findOne({ googleId });
+
     if (!user) {
       user = await User.findOne({ email });
       if (user) {
@@ -171,21 +149,17 @@ export const postGoogleLogin = async (req, res) => {
       }
     }
 
-    const token = signToken(user, { expiresIn: "7d" });
-    return res.status(200).json({
+    const token = signToken(user);
+
+    return res.status(HTTP_STATUS.OK).json({
       success: true,
-      message: "Google login successful",
+      message: MSG.GOOGLE_LOGIN_SUCCESS,
       token,
-      user: {
-        id: user._id,
-        name: user.firstName,
-        role: user.userType,
-      },
+      user: formatUser(user),
     });
   } catch (err) {
-    console.error("POST /auth/google-login error:", err.message);
-    return res
-      .status(500)
-      .json({ success: false, message: "Google login failed" });
+    next(
+      new AppError(MSG.GOOGLE_LOGIN_FAILED, HTTP_STATUS.INTERNAL_SERVER_ERROR),
+    );
   }
 };

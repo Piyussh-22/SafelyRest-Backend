@@ -1,9 +1,13 @@
 import jwt from "jsonwebtoken";
 import User from "../models/user.js";
+import { AppError } from "../utils/AppError.js";
+import { MSG } from "../constants/messages.js";
+import { HTTP_STATUS } from "../constants/httpStatus.js";
 
 export const protect = async (req, res, next) => {
   try {
     let token;
+
     if (
       req.headers.authorization &&
       req.headers.authorization.startsWith("Bearer")
@@ -12,50 +16,29 @@ export const protect = async (req, res, next) => {
     }
 
     if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: "Not authorized, token missing",
-      });
+      return next(new AppError(MSG.TOKEN_MISSING, HTTP_STATUS.UNAUTHORIZED));
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Hardcoded admin bypass
-    if (decoded.id === "admin-id") {
-      req.user = {
-        _id: "admin-id",
-        email: process.env.ADMIN_EMAIL,
-        userType: "admin",
-      };
-      return next();
-    }
-
     const user = await User.findById(decoded.id);
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "The user belonging to this token no longer exists",
-      });
+      return next(
+        new AppError(MSG.USER_NOT_FOUND_TOKEN, HTTP_STATUS.UNAUTHORIZED),
+      );
     }
 
     req.user = user;
     next();
   } catch (err) {
-    console.error("Auth error:", err.message);
-    return res.status(401).json({
-      success: false,
-      message: "Not authorized, token invalid",
-    });
+    return next(new AppError(MSG.TOKEN_INVALID, HTTP_STATUS.UNAUTHORIZED));
   }
 };
 
 export const restrictTo = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.userType)) {
-      return res.status(403).json({
-        success: false,
-        message: "Forbidden: insufficient permissions",
-      });
+      return next(new AppError(MSG.FORBIDDEN, HTTP_STATUS.FORBIDDEN));
     }
     next();
   };

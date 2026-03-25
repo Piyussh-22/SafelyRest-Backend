@@ -1,100 +1,89 @@
-import { Favourite } from "../models/favourite.js";
-import { House } from "../models/house.js";
+import {
+  fetchAllHouses,
+  fetchHouseById,
+  fetchFavourites,
+  toggleFavourite as toggleFavouriteService,
+  checkHouseAvailability,
+} from "../services/store.service.js";
+import { MSG } from "../constants/messages.js";
+import { HTTP_STATUS } from "../constants/httpStatus.js";
 
-// GET: All houses
-export const getHouses = async (req, res) => {
+// GET /store/houses
+export const getHouses = async (req, res, next) => {
   try {
-    const houses = await House.find();
-    res.json({ success: true, data: houses });
+    const { location, minPrice, maxPrice, amenities, page, limit } = req.query;
+    const result = await fetchAllHouses({
+      location,
+      minPrice,
+      maxPrice,
+      amenities,
+      page,
+      limit,
+    });
+    return res.status(HTTP_STATUS.OK).json({ success: true, ...result });
   } catch (err) {
-    console.error("Error fetching houses:", err.message);
-    res.status(500).json({ success: false, message: "Failed to fetch houses" });
+    next(err);
   }
 };
 
-// GET: House details by ID
-export const getHouseDetails = async (req, res) => {
-  const { houseId } = req.params;
+// GET /store/houses/:houseId
+export const getHouseDetails = async (req, res, next) => {
   try {
-    const house = await House.findById(houseId);
-    if (!house)
-      return res
-        .status(404)
-        .json({ success: false, message: "House not found" });
-    res.json({ success: true, data: house });
+    const house = await fetchHouseById(req.params.houseId);
+    return res.status(HTTP_STATUS.OK).json({ success: true, data: house });
   } catch (err) {
-    console.error("Error fetching house details:", err.message);
-    res
-      .status(500)
-      .json({ success: false, message: "Failed to fetch house details" });
+    next(err);
   }
 };
 
-// GET: Favourite houses for logged-in user
-export const getFavouriteList = async (req, res) => {
+// GET /store/favourites
+export const getFavouriteList = async (req, res, next) => {
   try {
-    const favourites = await Favourite.find({ userId: req.user._id }).populate(
-      "houseId"
+    const favourites = await fetchFavourites(req.user._id);
+    return res.status(HTTP_STATUS.OK).json({ success: true, data: favourites });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /store/favourites
+export const toggleFavourite = async (req, res, next) => {
+  try {
+    const favourites = await toggleFavouriteService(
+      req.body.houseId,
+      req.user._id,
     );
-    const favouriteHouses = favourites.map((fav) => ({
-      ...fav.houseId.toObject(),
-      isFav: true,
-    }));
-    res.json({ success: true, data: favouriteHouses });
+    return res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: MSG.ADDED_FAVOURITE,
+      data: favourites,
+    });
   } catch (err) {
-    console.error("Error fetching favourites:", err.message);
-    res
-      .status(500)
-      .json({ success: false, message: "Failed to fetch favourites" });
+    next(err);
   }
 };
 
-// POST: Toggle favourite (add/remove)
-export const toggleFavourite = async (req, res) => {
-  const { houseId } = req.body;
-  if (!houseId) {
-    return res
-      .status(400)
-      .json({ success: false, message: "House ID is required" });
-  }
-
+export const getHouseAvailability = async (req, res, next) => {
   try {
-    let message = "";
-    const existing = await Favourite.findOne({ houseId, userId: req.user._id });
+    const { checkIn, checkOut } = req.query;
 
-    if (existing) {
-      await Favourite.findOneAndDelete({ houseId, userId: req.user._id });
-      //console.log("house remove");
-      message = `Removed from favourites house:${houseId}`;
-    } else {
-      try {
-        await Favourite.create({ houseId, userId: req.user._id });
-        //console.log("house added");
-        message = `Added to favourites house:${houseId}`;
-      } catch (err) {
-        // If unique index violation → house already favourited
-        if (err.code === 11000) {
-          message = "House already in favourites";
-        } else {
-          throw err;
-        }
-      }
+    if (!checkIn || !checkOut) {
+      return next(
+        new AppError(
+          "checkIn and checkOut are required",
+          HTTP_STATUS.BAD_REQUEST,
+        ),
+      );
     }
 
-    // Always return the updated favourites list
-    const favourites = await Favourite.find({ userId: req.user._id }).populate(
-      "houseId"
+    const result = await checkHouseAvailability(
+      req.params.houseId,
+      checkIn,
+      checkOut,
     );
-    const favouriteHouses = favourites.map((fav) => ({
-      ...fav.houseId.toObject(),
-      isFav: true,
-    }));
 
-    res.json({ success: true, message, data: favouriteHouses });
+    return res.status(HTTP_STATUS.OK).json({ success: true, data: result });
   } catch (err) {
-    console.error("Error toggling favourite:", err.message);
-    res
-      .status(500)
-      .json({ success: false, message: "Failed to toggle favourite" });
+    next(err);
   }
 };
