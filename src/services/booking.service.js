@@ -15,16 +15,11 @@ const hasOverlap = (checkIn, checkOut) => ({
   ],
 });
 
-const expirePendingBookings = async (houseId, session) => {
+const expirePendingBookings = async (houseId) => {
   const todayIST = toISTMidnight(new Date());
   await Booking.updateMany(
-    {
-      house: houseId,
-      status: "pending",
-      checkIn: { $lt: todayIST },
-    },
+    { house: houseId, status: "pending", checkIn: { $lt: todayIST } },
     { $set: { status: "cancelled" } },
-    session ? { session } : {},
   );
 };
 
@@ -48,6 +43,8 @@ export const createBooking = async ({
   guests,
   message,
 }) => {
+  await expirePendingBookings(houseId);
+
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -74,8 +71,6 @@ export const createBooking = async ({
         HTTP_STATUS.BAD_REQUEST,
       );
     }
-
-    await expirePendingBookings(houseId, session);
 
     const houseConflict = await Booking.findOne({
       house: houseId,
@@ -105,6 +100,7 @@ export const createBooking = async ({
         HTTP_STATUS.BAD_REQUEST,
       );
     }
+
     const totalPrice = nights * house.price;
 
     const [booking] = await Booking.create(
@@ -123,21 +119,30 @@ export const createBooking = async ({
     );
 
     await session.commitTransaction();
+    session.endSession(); // ✅ end session BEFORE populate
 
-    return booking.populate([
-      {
+    const populatedBooking = await Booking.findById(booking._id)
+      .populate({
         path: "house",
         select: "name location price photos amenities capacity",
-      },
-      { path: "guest", select: "firstName email" },
-    ]);
+      })
+      .populate({
+        path: "guest",
+        select: "firstName email",
+      });
+
+    return populatedBooking;
   } catch (err) {
     try {
       await session.abortTransaction();
-    } catch (_) {}
+    } catch (abortErr) {
+      console.error("Abort failed:", abortErr);
+    }
     throw err;
   } finally {
-    session.endSession();
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
   }
 };
 
@@ -182,9 +187,11 @@ export const updateBookingStatus = async (bookingId, hostId, status) => {
     path: "house",
     select: "owner",
   });
+
   if (!booking) {
     throw new AppError(MSG.BOOKING_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
   }
+
   if (!booking.house) {
     throw new AppError(MSG.HOUSE_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
   }
@@ -211,6 +218,7 @@ export const updateBookingStatus = async (bookingId, hostId, status) => {
 
 export const cancelBooking = async (bookingId, guestId) => {
   const booking = await Booking.findOne({ _id: bookingId, guest: guestId });
+
   if (!booking) {
     throw new AppError(MSG.BOOKING_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
   }
@@ -221,11 +229,13 @@ export const cancelBooking = async (bookingId, guestId) => {
 
   booking.status = "cancelled";
   await booking.save();
+
   return booking;
 };
 
 export const checkHouseAvailability = async (houseId, checkIn, checkOut) => {
   const house = await House.findById(houseId);
+
   if (!house) {
     throw new AppError(MSG.HOUSE_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
   }
@@ -234,7 +244,6 @@ export const checkHouseAvailability = async (houseId, checkIn, checkOut) => {
     return { available: false, reason: "Host has paused this listing" };
   }
 
-  // cheak this
   await expirePendingBookings(houseId);
 
   const conflict = await Booking.findOne({
