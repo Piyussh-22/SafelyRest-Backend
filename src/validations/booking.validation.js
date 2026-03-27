@@ -42,6 +42,9 @@ export const bookingValidation = [
     .isISO8601()
     .withMessage("Check-out must be a valid date")
     .custom((value, { req }) => {
+      if (!req.body.checkIn || isNaN(new Date(req.body.checkIn).getTime())) {
+        return true; // checkIn validator will handle this
+      }
       const checkOut = getISTMidnight(new Date(value));
       const checkIn = getISTMidnight(new Date(req.body.checkIn));
 

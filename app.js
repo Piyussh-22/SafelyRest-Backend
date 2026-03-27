@@ -9,10 +9,8 @@ import adminRoutes from "./src/routes/admin.routes.js";
 import bookingRoutes from "./src/routes/booking.routes.js";
 import { connectDB } from "./src/utils/db.util.js";
 import { errorHandler } from "./src/middlewares/errorHandler.js";
-import { protect, restrictTo } from "./src/middlewares/auth.js";
 import { MSG } from "./src/constants/messages.js";
 import { HTTP_STATUS } from "./src/constants/httpStatus.js";
-import { ROLES } from "./src/constants/roles.js";
 
 const app = express();
 
@@ -34,8 +32,8 @@ app.get("/uptime", (_req, res) => res.status(HTTP_STATUS.OK).send("OK"));
 
 // Protected
 app.use("/api/bookings", bookingRoutes);
-app.use("/api/host", protect, restrictTo(ROLES.HOST), hostRoutes);
-app.use("/api/admin", protect, restrictTo(ROLES.ADMIN), adminRoutes);
+app.use("/api/host", hostRoutes);
+app.use("/api/admin", adminRoutes);
 
 // 404
 app.use((_req, res) => {

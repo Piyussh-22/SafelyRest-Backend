@@ -83,11 +83,6 @@ houseSchema.pre("findOneAndDelete", async function (next) {
   next();
 });
 
-houseSchema.pre("deleteOne", { document: true }, async function (next) {
-  await deleteFavourites(this._id);
-  next();
-});
-
 houseSchema.index({ location: 1, price: 1 });
 houseSchema.index({ owner: 1 });
 houseSchema.index({ isAvailable: 1 });

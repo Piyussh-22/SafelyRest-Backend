@@ -15,7 +15,7 @@ const hasOverlap = (checkIn, checkOut) => ({
   ],
 });
 
-const expirePendingBookings = async (houseId) => {
+const expirePendingBookings = async (houseId, session) => {
   const todayIST = toISTMidnight(new Date());
   await Booking.updateMany(
     {
@@ -24,6 +24,7 @@ const expirePendingBookings = async (houseId) => {
       checkIn: { $lt: todayIST },
     },
     { $set: { status: "cancelled" } },
+    session ? { session } : {},
   );
 };
 
@@ -74,7 +75,7 @@ export const createBooking = async ({
       );
     }
 
-    await expirePendingBookings(houseId);
+    await expirePendingBookings(houseId, session);
 
     const houseConflict = await Booking.findOne({
       house: houseId,
@@ -98,6 +99,12 @@ export const createBooking = async ({
     }
 
     const nights = getNights(checkIn, checkOut);
+    if (nights <= 0) {
+      throw new AppError(
+        "Check-out must be after check-in",
+        HTTP_STATUS.BAD_REQUEST,
+      );
+    }
     const totalPrice = nights * house.price;
 
     const [booking] = await Booking.create(
@@ -125,7 +132,9 @@ export const createBooking = async ({
       { path: "guest", select: "firstName email" },
     ]);
   } catch (err) {
-    await session.abortTransaction();
+    try {
+      await session.abortTransaction();
+    } catch (_) {}
     throw err;
   } finally {
     session.endSession();
@@ -144,14 +153,16 @@ export const fetchGuestBookings = async (guestId) => {
   return bookings.map((booking) => {
     const data = booking.toObject();
 
-    if (data.status === "confirmed") {
+    if (!data.house) return data;
+
+    if (data.status === "confirmed" && data.house.owner) {
       data.hostContact = {
         name: data.house.owner.firstName,
         email: data.house.owner.email,
       };
     }
 
-    delete data.house.owner;
+    if (data.house) delete data.house.owner;
     return data;
   });
 };
@@ -167,9 +178,15 @@ export const fetchHostBookings = async (hostId) => {
 };
 
 export const updateBookingStatus = async (bookingId, hostId, status) => {
-  const booking = await Booking.findById(bookingId).populate("house");
+  const booking = await Booking.findById(bookingId).populate({
+    path: "house",
+    select: "owner",
+  });
   if (!booking) {
     throw new AppError(MSG.BOOKING_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
+  }
+  if (!booking.house) {
+    throw new AppError(MSG.HOUSE_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
   }
 
   if (booking.house.owner.toString() !== hostId.toString()) {
@@ -217,6 +234,7 @@ export const checkHouseAvailability = async (houseId, checkIn, checkOut) => {
     return { available: false, reason: "Host has paused this listing" };
   }
 
+  // cheak this
   await expirePendingBookings(houseId);
 
   const conflict = await Booking.findOne({

@@ -4,11 +4,11 @@ import cloudinary from "../config/cloudinary.config.js";
 
 const storage = new CloudinaryStorage({
   cloudinary,
-  params: {
+  params: async (req, file) => ({
     folder: "houses",
     allowed_formats: ["jpg", "jpeg", "png"],
     transformation: [{ width: 800, quality: "auto" }],
-  },
+  }),
 });
 
 export const upload = multer({

@@ -4,6 +4,7 @@ import { Booking } from "../models/booking.js";
 import { AppError } from "../utils/AppError.js";
 import { MSG } from "../constants/messages.js";
 import { HTTP_STATUS } from "../constants/httpStatus.js";
+import mongoose from "mongoose";
 
 export const fetchAllHouses = async ({
   location,
@@ -51,6 +52,9 @@ export const fetchAllHouses = async ({
 };
 
 export const fetchHouseById = async (houseId) => {
+  if (!mongoose.Types.ObjectId.isValid(houseId)) {
+    throw new AppError(MSG.INVALID_HOUSE_ID, HTTP_STATUS.BAD_REQUEST);
+  }
   const house = await House.findById(houseId);
   if (!house) {
     throw new AppError(MSG.HOUSE_NOT_FOUND, HTTP_STATUS.NOT_FOUND);
@@ -60,10 +64,12 @@ export const fetchHouseById = async (houseId) => {
 
 export const fetchFavourites = async (userId) => {
   const favourites = await Favourite.find({ userId }).populate("houseId");
-  return favourites.map((fav) => ({
-    ...fav.houseId.toObject(),
-    isFav: true,
-  }));
+  return favourites
+    .filter((fav) => fav.houseId != null)
+    .map((fav) => ({
+      ...fav.houseId.toObject(),
+      isFav: true,
+    }));
 };
 
 export const toggleFavourite = async (houseId, userId) => {
@@ -72,9 +78,11 @@ export const toggleFavourite = async (houseId, userId) => {
   }
 
   const existing = await Favourite.findOne({ houseId, userId });
+  let removed = false;
 
   if (existing) {
     await Favourite.findOneAndDelete({ houseId, userId });
+    removed = true;
   } else {
     try {
       await Favourite.create({ houseId, userId });
@@ -83,7 +91,8 @@ export const toggleFavourite = async (houseId, userId) => {
     }
   }
 
-  return await fetchFavourites(userId);
+  const favourites = await fetchFavourites(userId);
+  return { removed, favourites };
 };
 
 export const checkHouseAvailability = async (houseId, checkIn, checkOut) => {
@@ -98,7 +107,7 @@ export const checkHouseAvailability = async (houseId, checkIn, checkOut) => {
 
   const conflict = await Booking.findOne({
     house: houseId,
-    status: { $in: ["pending", "confirmed"] },
+    status: "confirmed",
     $or: [
       {
         checkIn: { $lt: new Date(checkOut) },

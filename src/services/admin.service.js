@@ -74,14 +74,16 @@ export const removeHouseByAdmin = async (houseId) => {
 
   for (const url of house.photos) {
     try {
-      const parts = url.split("/");
-      const filename = parts[parts.length - 1].split(".")[0];
-      const folder = parts[parts.length - 2];
-      await cloudinary.uploader.destroy(`${folder}/${filename}`);
+      const matches = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-z]+$/i);
+
+      if (matches) {
+        await cloudinary.uploader.destroy(matches[1]);
+      }
     } catch (err) {
       console.warn(`Failed to delete Cloudinary image: ${url}`, err.message);
     }
   }
 
   await House.findOneAndDelete({ _id: houseId });
+  await Booking.deleteMany({ house: houseId });
 };
