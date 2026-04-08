@@ -17,7 +17,9 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image (validation)
-        run: docker build -t backend-test .
+        run: |
+          echo "Building image with tag: ${{ github.sha }}"
+          docker build -t backend-test:${{ github.sha }} .
 
       - name: Trigger Render Deploy
-        run: curl ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: curl --fail-with-body "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"

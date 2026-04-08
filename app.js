@@ -32,7 +32,10 @@ app.use("/api/auth", authRoutes);
 app.use("/api/store", storeRoutes);
 
 // Uptime monitoring
-app.get("/uptime", (_req, res) => res.status(HTTP_STATUS.OK).send("OK"));
+app.get("/uptime", (_req, res) => {
+  console.log("uptime endpoint hit");
+  res.status(HTTP_STATUS.OK).send("OK");
+});
 
 // Protected
 app.use("/api/bookings", bookingRoutes);
