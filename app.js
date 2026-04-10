@@ -54,6 +54,10 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 4000;
 
-connectDB().then(() => {
-  app.listen(PORT, () => console.log(`🟢 Server running on PORT ${PORT}`));
-});
+if (process.env.NODE_ENV !== "test") {
+  connectDB().then(() => {
+    app.listen(PORT, () => console.log(`🟢 Server running on PORT ${PORT}`));
+  });
+}
+
+export default app;
